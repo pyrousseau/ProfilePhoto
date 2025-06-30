@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Masque Cercle Photo de Profil</title>
+    <style>
+      body {
+        font-family: sans-serif;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 2em;
+      }
+      input,
+      button,
+      select,
+      label {
+        margin-bottom: 1em;
+      }
+      .mask {
+        border-radius: 50%;
+        overflow: hidden;
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
+        background-color: #f0f0f0;
+        position: relative;
+      }
+      canvas {
+        border-radius: 50%;
+        background: transparent;
+      }
+      #output-container {
+        margin-top: 1em;
+      }
+      .output-preview {
+        object-fit: cover;
+        border-radius: 50%;
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Masquer une photo en cercle</h1>
+
+    <input type="file" accept="image/*" onchange="preview(event)" />
+
+    <label for="size">Taille :</label>
+    <select id="size" onchange="updatePreviewSize()">
+      <option value="100">100x100</option>
+      <option value="150">150x150</option>
+      <option value="200" selected>200x200</option>
+      <option value="300">300x300</option>
+      <option value="400">400x400</option>
+    </select>
+
+    <label for="borderColor">Couleur de bordure :</label>
+    <input
+      type="color"
+      id="borderColor"
+      value="#F15522"
+      onchange="drawPreview()"
+    />
+
+    <label for="borderWidth">Épaisseur de la bordure :</label>
+    <input
+      type="range"
+      id="borderWidth"
+      min="0"
+      max="20"
+      value="4"
+      oninput="drawPreview()"
+    />
+    <span id="borderWidthValue">4</span> px
+
+    <label
+      ><input
+        type="checkbox"
+        id="borderToggle"
+        checked
+        onchange="drawPreview()"
+      />
+      Afficher la bordure</label
+    >
+
+    <div class="mask" id="preview-container">
+      <canvas id="canvas"></canvas>
+    </div>
+
+    <button onclick="downloadImage()" id="download-btn" style="display: none">
+      Télécharger
+    </button>
+
+    <div id="output-container"></div>
+
+    <script>
+      let currentImage = null;
+      let currentSize = 200;
+      let scale = 1;
+      let posX = 0,
+        posY = 0;
+      let drag = false;
+      let startX = 0,
+        startY = 0;
+
+      const canvas = document.getElementById('canvas');
+      const ctx = canvas.getContext('2d');
+
+      function preview(event) {
+        const file = event.target.files[0];
+        if (file) {
+          const reader = new FileReader();
+          reader.onload = function () {
+            currentImage = new Image();
+            currentImage.onload = () => {
+              resetTransform();
+              drawPreview();
+              document.getElementById('download-btn').style.display =
+                'inline-block';
+            };
+            currentImage.src = reader.result;
+          };
+          reader.readAsDataURL(file);
+        }
+      }
+
+      function updatePreviewSize() {
+        currentSize = parseInt(document.getElementById('size').value);
+        document.getElementById('preview-container').style.width =
+          currentSize + 'px';
+        document.getElementById('preview-container').style.height =
+          currentSize + 'px';
+        canvas.width = currentSize;
+        canvas.height = currentSize;
+        drawPreview();
+      }
+
+      function resetTransform() {
+        scale = 1;
+        posX = 0;
+        posY = 0;
+      }
+
+      function drawPreview() {
+        if (!currentImage) return;
+
+        const borderColor = document.getElementById('borderColor').value;
+        const borderWidth = parseInt(
+          document.getElementById('borderWidth').value
+        );
+        const showBorder = document.getElementById('borderToggle').checked;
+
+        document.getElementById('borderWidthValue').textContent = borderWidth;
+        document.getElementById('borderWidth').disabled = !showBorder;
+        document.getElementById('borderColor').disabled = !showBorder;
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Masque circulaire pour l’image
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(
+          currentSize / 2,
+          currentSize / 2,
+          currentSize / 2,
+          0,
+          Math.PI * 2
+        );
+        ctx.clip();
+
+        const w = currentImage.width * scale;
+        const h = currentImage.height * scale;
+        const x = currentSize / 2 - w / 2 + posX;
+        const y = currentSize / 2 - h / 2 + posY;
+        ctx.drawImage(currentImage, x, y, w, h);
+        ctx.restore();
+
+        // Bordure par-dessus
+        if (showBorder) {
+          ctx.beginPath();
+          ctx.arc(
+            currentSize / 2,
+            currentSize / 2,
+            currentSize / 2 - borderWidth / 2,
+            0,
+            Math.PI * 2
+          );
+          ctx.strokeStyle = borderColor;
+          ctx.lineWidth = borderWidth;
+          ctx.stroke();
+        }
+      }
+
+      canvas.addEventListener('wheel', function (e) {
+        e.preventDefault();
+        const zoomAmount = e.deltaY < 0 ? 0.05 : -0.05;
+        scale = Math.min(Math.max(0.1, scale + zoomAmount), 5);
+        drawPreview();
+      });
+
+      canvas.addEventListener('mousedown', function (e) {
+        drag = true;
+        startX = e.offsetX;
+        startY = e.offsetY;
+      });
+
+      canvas.addEventListener('mousemove', function (e) {
+        if (drag) {
+          posX += e.offsetX - startX;
+          posY += e.offsetY - startY;
+          startX = e.offsetX;
+          startY = e.offsetY;
+          drawPreview();
+        }
+      });
+
+      canvas.addEventListener('mouseup', () => (drag = false));
+      canvas.addEventListener('mouseleave', () => (drag = false));
+
+      function downloadImage() {
+        if (!currentImage) return;
+
+        const downloadCanvas = document.createElement('canvas');
+        downloadCanvas.width = currentSize;
+        downloadCanvas.height = currentSize;
+        const downloadCtx = downloadCanvas.getContext('2d');
+
+        const borderColor = document.getElementById('borderColor').value;
+        const borderWidth = parseInt(
+          document.getElementById('borderWidth').value
+        );
+        const showBorder = document.getElementById('borderToggle').checked;
+
+        downloadCtx.clearRect(
+          0,
+          0,
+          downloadCanvas.width,
+          downloadCanvas.height
+        );
+
+        // Masque circulaire pour l’image
+        downloadCtx.save();
+        downloadCtx.beginPath();
+        downloadCtx.arc(
+          currentSize / 2,
+          currentSize / 2,
+          currentSize / 2,
+          0,
+          Math.PI * 2
+        );
+        downloadCtx.clip();
+
+        const w = currentImage.width * scale;
+        const h = currentImage.height * scale;
+        const x = currentSize / 2 - w / 2 + posX;
+        const y = currentSize / 2 - h / 2 + posY;
+        downloadCtx.drawImage(currentImage, x, y, w, h);
+        downloadCtx.restore();
+
+        // Bordure par-dessus
+        if (showBorder) {
+          downloadCtx.beginPath();
+          downloadCtx.arc(
+            currentSize / 2,
+            currentSize / 2,
+            currentSize / 2 - borderWidth / 2,
+            0,
+            Math.PI * 2
+          );
+          downloadCtx.strokeStyle = borderColor;
+          downloadCtx.lineWidth = borderWidth;
+          downloadCtx.stroke();
+        }
+
+        downloadCanvas.toBlob(function (blob) {
+          if (!blob) {
+            alert('Erreur lors de la création du fichier PNG.');
+            return;
+          }
+
+          const url = URL.createObjectURL(blob);
+
+          const outputContainer = document.getElementById('output-container');
+          outputContainer.innerHTML = `<img class='output-preview' src='${url}' alt='Aperçu' width='${currentSize}' height='${currentSize}'>`;
+
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = 'photo_profil_cercle.png';
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+        }, 'image/png');
+      }
+
+      // Initialisation
+      updatePreviewSize();
+    </script>
+  </body>
+</html>
